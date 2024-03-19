@@ -3,6 +3,7 @@
 
 from sklearn.ensemble import GradientBoostingRegressor
 import pandas as pd
+import numpy as np
 
 
 class CustomGBR(GradientBoostingRegressor):
@@ -106,6 +107,39 @@ class CustomGBR(GradientBoostingRegressor):
             splits_info += self._extract_splits(tree, tree.children_right[node_id], iteration, right_path)
 
         return splits_info
+    
+    def get_prediction_feature_impacts(self, X):
+        """
+        Takes in an array of numbers corresponding to a single data point
+        """
+        feature_impacts = []
+
+        for iter_num, estimator in enumerate(self.estimators_):
+            tree = estimator[0].tree_
+            decision_path = estimator[0].decision_path(X).toarray()[0]
+            active_nodes = np.where(decision_path == 1)[0]
+
+            for node_id in active_nodes:
+                # Skip if current node is a leaf node
+                if tree.children_left[node_id] == tree.children_right[node_id] == -1:
+                    continue
+
+                feature_index = tree.feature[node_id]
+                threshold = tree.threshold[node_id]
+                left_child_node_id, right_child_node_id = tree.children_left[node_id], tree.children_right[node_id]
+                # Calculate the impact of a feature split, defined as value of left child - value of right child
+                impact = (tree.value[right_child_node_id].sum() - tree.value[left_child_node_id].sum()) * self.learning_rate
+
+                feature_impacts.append({
+                    'threshold': threshold,
+                    'iteration': iter_num + 1,
+                    'feature': feature_index,
+                    'impact': impact
+                })
+
+        df_impacts = pd.DataFrame(feature_impacts)
+        return df_impacts
+
 
 
 if __name__ == "__main__":
