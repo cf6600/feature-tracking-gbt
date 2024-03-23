@@ -140,6 +140,14 @@ class CustomGBR(GradientBoostingRegressor):
         df_impacts = pd.DataFrame(feature_impacts)
         return df_impacts
 
+    def get_predictions_feature_impacts(self, X):
+        """
+        Takes in mulitple data points and consolidates feature impacts on predictions
+        """
+        dfs = []
+        for i in range(len(X)):
+            dfs.append(self.get_prediction_feature_impacts(np.array(X.iloc[i, :]).reshape(1, -1)))
+        return pd.concat(dfs)
 
 
 if __name__ == "__main__":
