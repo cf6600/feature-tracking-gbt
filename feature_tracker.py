@@ -83,7 +83,7 @@ class CustomGBR(GradientBoostingRegressor):
         left_child_node_id, right_child_node_id = tree.children_left[node_id], tree.children_right[node_id]
         
         # Calculate the impact of a feature split, defined as value of left child - value of right child
-        impact = (tree.value[right_child_node_id].sum() - tree.value[left_child_node_id].sum()) * self.learning_rate
+        impact = abs(tree.value[right_child_node_id].sum() - tree.value[left_child_node_id].sum()) * self.learning_rate
 
         # Get sample sizes of the splits
         left_child_sample_size, right_child_sample_size = tree.n_node_samples[left_child_node_id], tree.n_node_samples[right_child_node_id]
@@ -128,7 +128,7 @@ class CustomGBR(GradientBoostingRegressor):
                 threshold = tree.threshold[node_id]
                 left_child_node_id, right_child_node_id = tree.children_left[node_id], tree.children_right[node_id]
                 # Calculate the impact of a feature split, defined as value of left child - value of right child
-                impact = (tree.value[right_child_node_id].sum() - tree.value[left_child_node_id].sum()) * self.learning_rate
+                impact = abs(tree.value[right_child_node_id].sum() - tree.value[left_child_node_id].sum()) * self.learning_rate
 
                 feature_impacts.append({
                     'threshold': threshold,
