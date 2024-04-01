@@ -92,7 +92,7 @@ class CustomGBR(GradientBoostingRegressor):
             stage_importances = estimator[0].tree_.compute_feature_importances(normalize=True)
             self.iter_feature_importances_.append(stage_importances)
         
-        self.iter_feature_impacts_ = self.aggregate_feature_impacts(directional=False, normalized=True)
+        self.iter_feature_impacts_ = self.aggregate_feature_impacts(directional=False, normalized=True, weighted_by_samples=True, n_samples=1)
 
         return self
     
@@ -103,20 +103,24 @@ class CustomGBR(GradientBoostingRegressor):
         return importances_df
     
 
-    def get_feature_impacts_per_iteration(self, directional=False, normalized=True):
-        return self.aggregate_feature_impacts(directional, normalized)
+    def get_feature_impacts_per_iteration(self, directional=False, normalized=True, weighted_by_samples=True, n_samples=1):
+        return self.aggregate_feature_impacts(directional, normalized, weighted_by_samples, n_samples)
     
     def get_feature_gradients_per_iteration(self, X, directional=False):
         return self.aggregate_feature_gradients(X, directional)
 
 
-    def aggregate_feature_impacts(self, directional, normalized):
+    def aggregate_feature_impacts(self, directional, normalized, weighted_by_samples, n_samples):
         feature_impacts = []
         for iter, estimator in enumerate(self.estimators_):
             for split in self._extract_splits(estimator[0].tree_, iteration=iter + 1, directional=directional):
                 feature_impacts.append(split)
         
         df = pd.DataFrame(feature_impacts, columns=['iteration', 'feature', 'threshold', 'impact', 'samples'])
+
+        if weighted_by_samples:
+            df['impact'] = df['impact'] * df['samples'] / n_samples
+
         if normalized:
             mean_impacts = df.groupby(['feature', 'iteration'])['impact'].mean().reset_index()
             impact_sums = mean_impacts.groupby('iteration')['impact'].transform('sum')
@@ -205,7 +209,6 @@ class CustomGBR(GradientBoostingRegressor):
         else:
             gradient = impact / feature_distance
 
-        # Additional information to track, like in your original function
         splits_info = [{
             'iteration': iteration,
             'feature': feature_index,

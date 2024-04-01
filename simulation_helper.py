@@ -86,41 +86,54 @@ def get_feature_importance_early_stopping_iter(feature_importances_df, feature_i
     return min(df_below_thresh.index)
 
 
-def train_eval_gbr_feature_es(gbr_trained, best_params, X_train, y_train, X_test, y_test, random_state=42):
-    # Train CustomGBR with early stopping
-    feature_importances_per_iter = gbr_trained.get_feature_importance_per_iteration()
-    n_iter_feature_es = get_feature_importance_early_stopping_iter(feature_importances_per_iter, 
-                                                                   14, threshold=0.25, n_iter_no_change=10)
+def get_feature_impact_early_stopping_iter(feature_impacts_df, feature_idx, threshold=0.1, n_iter_no_change=2):
+    """
+    Feature impacts here only works for non-directional impacts.
+    """
+    df = pd.DataFrame(feature_impacts_df[feature_impacts_df['feature'] == feature_idx])
+    df_feature_per_iter = df.groupby('iteration').sum()
+    df_feature_per_iter['rolling_max_impact'] = df_feature_per_iter['normalized_impact'].rolling(n_iter_no_change).max()
+    df_below_thresh = df_feature_per_iter[df_feature_per_iter['rolling_max_impact'] < threshold]
+    if len(df_below_thresh) < 1:
+        return len(df_feature_per_iter)
+    return min(df_below_thresh.index)
+
+
+def train_eval_gbr_feature_es(gbr_trained, best_params, X_train, y_train, X_test, y_test, feature_stopping_type='importance'):
+    if feature_stopping_type == 'impact':
+        feature_impacts_per_iter = gbr_trained.get_feature_impacts_per_iteration()
+        plot_feature_impacts_per_iter(feature_impacts_per_iter)
+        n_iter_feature_es = get_feature_impact_early_stopping_iter(feature_impacts_per_iter, 14, threshold=0.25, n_iter_no_change=3)
+    else:
+        feature_importances_per_iter = gbr_trained.get_feature_importance_per_iteration()
+        plot_feature_importances_per_iter(feature_importances_per_iter)
+        n_iter_feature_es = get_feature_importance_early_stopping_iter(feature_importances_per_iter, 14, threshold=0.25, n_iter_no_change=3)
     best_params['n_estimators'] = n_iter_feature_es
     gbr = CustomGBR(**best_params)
-    # gbr = CustomGBR(n_estimators=n_iter_feature_es, 
-    #                 learning_rate=0.1, 
-    #                 max_depth=3,
-                    # validation_fraction=0.2, 
-                    # n_iter_no_change=10, 
-                    # tol=0.01, 
-                    # random_state=random_state)
     gbr.fit(X_train, y_train)
     y_pred = gbr.predict(X_test)
     mse = mean_squared_error(y_test, y_pred)
 
     print(f'Mean Squared Error (MSE) for feature importance early',
           f'stopping with with {gbr.n_estimators_} estimators: {mse:.5f}')
-    return mse
+    return n_iter_feature_es, mse
 
 
-def train_eval_simulation(seed):
+def train_eval_simulation(seed, feature_stopping_type='importance'):
     X_train, X_test, y_train, y_test = generate_dataset(seed)
     gbr_trained, mse_es, best_params = train_eval_gbr_es(X_train, y_train, X_test, y_test, random_state=seed)
-    mse_feature_es = train_eval_gbr_feature_es(gbr_trained, best_params, X_train, y_train, 
-                                               X_test, y_test, random_state=42)
-    return {'seed': seed, 'mse_es': mse_es, 'mse_feature_es': mse_feature_es}
+    n_iter_es = gbr_trained.n_estimators_
+    n_iter_feature_es, mse_feature_es = train_eval_gbr_feature_es(gbr_trained, best_params, X_train, y_train, 
+                                               X_test, y_test, feature_stopping_type)
+    return {'seed': seed, 'n_iter_es': n_iter_es, 'mse_es': mse_es, 
+            'n_iter_feature_es': n_iter_feature_es, 'mse_feature_es': mse_feature_es}
 
 
-def train_eval_simulations(n_seeds):
+def train_eval_simulations(n_seeds, feature_stopping_type='importance'):
     results = []
     for seed in range(n_seeds):
-        results.append(train_eval_simulation(seed))
+        results.append(train_eval_simulation(seed, feature_stopping_type))
+        print(f'Seed {seed} complete.')
     df_results = pd.DataFrame(results)
     df_results['feature_es_improvement'] = df_results['mse_es'] >= df_results['mse_feature_es']
     return df_results

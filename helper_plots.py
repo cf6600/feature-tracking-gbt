@@ -11,20 +11,20 @@ def plot_feature_importances_per_iter(feature_importances_per_iter_df, feature_n
 
     # Smooth plot with moving average of past 1/10 of total iterations; minimum of 5
     window_size = len(df) // 10
-    df = df.rolling(window=5 if window_size < 5 else window_size).mean()
+    df = df.rolling(window=10 if window_size < 10 else window_size).mean()
 
+    plt.figure(figsize=(14, 6))
     for feature_idx in range(len(df.columns)):
         plt.plot(df.iloc[:, feature_idx], label=df.columns[feature_idx])
 
     plt.xlabel('Iteration')
     plt.ylabel('Feature Importance')
     plt.title('Feature Importance Over Iterations')
-    plt.legend()
+    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
     plt.show()
 
 
-def plot_feature_impacts_per_iter(feature_impacts_df, weighted_by_samples=False, 
-                                  feature_name_mappings=None, n_samples=1):
+def plot_feature_impacts_per_iter(feature_impacts_df, feature_name_mappings=None, plot_normalized=True):
     """
     Takes in a dataframe of feature impacts. Must have feature, impact, and iteration column.
     If weighted_by_samples is used, dataframe must have a samples column.
@@ -40,19 +40,17 @@ def plot_feature_impacts_per_iter(feature_impacts_df, weighted_by_samples=False,
     plt.figure(figsize=(14, 6))
     for feature in df['feature'].unique():
         df_feature = pd.DataFrame(df[df['feature'] == feature])
-        if weighted_by_samples:
-            df_feature['weighted_impact'] = df_feature['impact'] * df_feature['samples'] / n_samples
-            weighted_impact_per_iteration = df_feature.groupby('iteration')['weighted_impact'].sum()
-            impact_per_iteration = weighted_impact_per_iteration
-        else:
-            impact_per_iteration = df_feature.groupby('iteration')['impact'].sum()
+        if plot_normalized:
+            df_feature['impact'] = df_feature['normalized_impact']
+        impact_per_iteration = df_feature.groupby('iteration')['impact'].sum()
         impact_per_iteration = impact_per_iteration.reindex(range(1, n_iterations + 1), fill_value=0)
-        impact_per_iteration_smoothed = impact_per_iteration.rolling(window=10 if window_size < 10 else window_size).sum()
+        smoothing_window = 10 if window_size < 10 else window_size
+        impact_per_iteration_smoothed = impact_per_iteration.rolling(smoothing_window).sum() / smoothing_window
         plt.plot(impact_per_iteration_smoothed.index, impact_per_iteration_smoothed, label=feature)
     plt.title('Consolidated Impact per Iteration for Each Feature')
     plt.xlabel('Iteration')
     plt.ylabel('Total Impact')
-    plt.legend()
+    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
     plt.grid(True)
     plt.show()
 
@@ -108,16 +106,24 @@ def plot_total_feature_impacts(feature_impacts_per_iter_df, weighted_by_samples=
     plt.show()
 
 
-def plot_prediction_feature_impacts(predictions_df, feature_name_mappings=None):
+def plot_prediction_feature_impacts(predictions_df, feature_name_mappings=None, normalized=True, n_top=25):
     df = pd.DataFrame(predictions_df)
     if feature_name_mappings:
         df['feature'] = df['feature'].apply(lambda x: feature_name_mappings[x])
 
-    aggregated_impacts = df.groupby('feature')['impact'].sum().reset_index()
-    aggregated_impacts = aggregated_impacts.sort_values(by='feature')
+    if normalized:
+        aggregated_impacts = df.groupby(['iteration', 'feature'])['impact'].sum().reset_index()
+        total_impacts_per_iter = aggregated_impacts.groupby('iteration').sum()
+        aggregated_impacts = aggregated_impacts.merge(total_impacts_per_iter, how='left', on='iteration')
+        aggregated_impacts['impact'] = aggregated_impacts['impact_x'] / aggregated_impacts['impact_y']
+        aggregated_impacts = aggregated_impacts.groupby('feature_x')['impact'].sum().reset_index()
+        aggregated_impacts = aggregated_impacts.rename(columns={'feature_x': 'feature'})
+    else:
+        aggregated_impacts = df.groupby('feature')['impact'].sum().reset_index()
+    aggregated_impacts = aggregated_impacts.sort_values(by='impact', ascending=False)[:n_top]
 
     aggregated_impacts.plot(x='feature', y='impact', kind='bar', figsize=(10, 6))
-    plt.title('Aggregated Feature Impacts for Single Prediction')
+    plt.title('Aggregated Feature Impacts for Predictions')
     plt.xlabel('Feature')
     plt.ylabel('Impacts')
     plt.xticks(rotation=45)
